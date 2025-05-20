@@ -2,6 +2,22 @@
 
 set -e
 
+function installMariaDB() {
+    echo "Updating package lists..."
+    sudo apt-get update
+
+    echo "Installing MariaDB server and client..."
+    sudo apt-get install -y mariadb-server mariadb-client
+
+    echo "Enabling and starting MariaDB service..."
+    sudo systemctl enable mariadb
+    sudo systemctl start mariadb
+
+    echo "MariaDB installed successfully."
+    echo "Run 'sudo mysql_secure_installation' to secure your setup."
+}
+
+
 function uninstallMariaDB() {
     echo "Stopping MariaDB services..."
     sudo systemctl stop mariadb || true
@@ -19,42 +35,27 @@ function uninstallMariaDB() {
     echo "MariaDB and all configurations removed successfully."
 }
 
-function installMariaDB() {
-    echo "Updating package lists..."
-    sudo apt-get update
-
-    echo "Installing MariaDB server and client..."
-    sudo apt-get install -y mariadb-server mariadb-client
-
-    echo "Enabling and starting MariaDB service..."
-    sudo systemctl enable mariadb
-    sudo systemctl start mariadb
-
-    echo "MariaDB installed successfully."
-    echo "Run 'sudo mysql_secure_installation' to secure your setup."
-}
-
 function showUsage() {
   echo "Usage: $0 [--install | --reinstall | --uninstall]"
   exit 1
 }
 
 if [ $# -ne 1 ]; then
-  show_usage
+  showUsage
 fi
 
 case "$1" in
   --install)
-    install_mariadb
+    installMariaDB
     ;;
   --uninstall)
-    uninstall_mariadb
+    uninstallMariaDB
     ;;
   --reinstall)
-    uninstall_mariadb
-    install_mariadb
+    uninstallMariaDB
+    installMariaDB
     ;;
   *)
-    show_usage
+    showUsage
     ;;
 esac
