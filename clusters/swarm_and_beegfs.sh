@@ -90,8 +90,8 @@ fi
 
 # BeeGFS repo
 echo "[INFO] Adding BeeGFS repositories..."
-echo "deb http://www.beegfs.io/release/beegfs_7_3/debian/ beegfs non-free" | sudo tee /etc/apt/sources.list.d/beegfs.list
-wget -qO - http://www.beegfs.io/release/beegfs_7_3/gpg/BEGFS-GPG-KEY | sudo apt-key add -
+curl -fsSL https://www.beegfs.io/release/beegfs_7_3/gpg/BEGFS-GPG-KEY | sudo gpg --dearmor -o /usr/share/keyrings/beegfs.gpg
+echo "deb [signed-by=/usr/share/keyrings/beegfs.gpg] https://www.beegfs.io/release/beegfs_7_3/debian/ beegfs non-free" | sudo tee /etc/apt/sources.list.d/beegfs.list > /dev/null
 sudo apt-get update
 
 # BeeGFS Manager + Metadata on manager
