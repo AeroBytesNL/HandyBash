@@ -1,12 +1,52 @@
 #!/bin/bash
 
-# Gebruik: ./full_cluster_setup.sh [manager|worker] <MANAGER_IP>
+# Use: ./full_cluster_setup.sh [manager|worker] <MANAGER_IP>
 
 set -e
 
 ROLE=$1
 MANAGER_IP=$2
 
+if [[ "$1" == "--undo" ]]; then
+  echo "[INFO] Undoing all cluster setup on $(hostname)..."
+
+  # Leave Swarm if part of one
+  if docker info | grep -q 'Swarm: active'; then
+    echo "[INFO] Leaving Docker Swarm..."
+    docker swarm leave --force || true
+  fi
+
+  # Stop and disable BeeGFS services
+  echo "[INFO] Stopping and disabling BeeGFS services..."
+  systemctl disable --now beegfs-mgmtd beegfs-meta beegfs-storage beegfs-client beegfs-helperd 2>/dev/null || true
+
+  # Unmount BeeGFS mount
+  echo "[INFO] Unmounting BeeGFS mount..."
+  umount /mnt/beegfs 2>/dev/null || true
+  sed -i '/\/mnt\/beegfs/d' /etc/fstab
+
+  # Remove BeeGFS directories
+  echo "[INFO] Removing BeeGFS data directories..."
+  rm -rf /data/beegfs /mnt/beegfs
+
+  # Optionally remove BeeGFS packages
+  echo "[INFO] Removing BeeGFS packages..."
+  apt-get purge -y beegfs-* 2>/dev/null || true
+  apt-get autoremove -y
+
+  # Optionally remove Docker packages
+  echo "[INFO] Removing Docker..."
+  systemctl disable --now docker
+  apt-get purge -y docker-ce docker-ce-cli containerd.io 2>/dev/null || true
+  apt-get autoremove -y
+
+  # Remove BeeGFS repo
+  rm -f /etc/apt/sources.list.d/beegfs.list
+  apt-key del "$(apt-key list | grep -B 1 'BeeGFS' | head -n1 | awk '{print $2}')" 2>/dev/null || true
+
+  echo "[DONE] Undo complete."
+  exit 0
+fi
 if [[ "$ROLE" != "manager" && "$ROLE" != "worker" ]]; then
   echo "Usage: $0 [manager|worker] <MANAGER_IP (required for worker)>"
   exit 1
@@ -18,7 +58,7 @@ echo "[INFO] Preparing system..."
 sudo apt-get update
 sudo apt-get install -y curl gnupg lsb-release apt-transport-https ca-certificates linux-headers-$(uname -r)
 
-# Docker installeren
+# Docker installing
 echo "[INFO] Installing Docker..."
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
 echo \
