@@ -85,44 +85,29 @@ services:
   db:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
-      MYSQL_DATABASE: $MYSQL_DATABASE
-      MYSQL_USER: $MYSQL_USER
-      MYSQL_PASSWORD: $MYSQL_PASSWORD
+      MYSQL_ROOT_PASSWORD: ...
     volumes:
       - /var/lib/docker/volumes/${STACK_NAME}_db_data/_data:/var/lib/mysql
     networks:
-      - $NETWORK_NAME
+      - ${STACK_NAME}_net
 
   wordpress:
     image: wordpress:latest
-    depends_on:
-      - db
-    environment:
-      WORDPRESS_DB_HOST: db:3306
-      WORDPRESS_DB_USER: $MYSQL_USER
-      WORDPRESS_DB_PASSWORD: $MYSQL_PASSWORD
-      WORDPRESS_DB_NAME: $MYSQL_DATABASE
+    volumes:
+      - /var/lib/docker/volumes/${STACK_NAME}_wp_data/_data:/var/www/html/wp-content/uploads
     configs:
       - source: ${STACK_NAME}_wp_config
         target: /var/www/html/wp-config.php
         mode: 0444
-    volumes:
-      - /var/lib/docker/volumes/${STACK_NAME}_wp_data/_data:/var/www/html/wp-content/uploads
-    ports:
-      - "8080:80"
     networks:
-      - $NETWORK_NAME
+      - ${STACK_NAME}_net
 
 configs:
   ${STACK_NAME}_wp_config:
     external: true
 
-volumes:
-  # No need to declare volumes here anymore when using bind mounts
-
 networks:
-  $NETWORK_NAME:
+  ${STACK_NAME}_net:
     external: true
 EOF
 
