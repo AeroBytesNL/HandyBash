@@ -8,14 +8,14 @@ if [[ -z "$STACK_NAME" ]]; then
   exit 1
 fi
 
-# Generate random MySQL credentials
+# Generate MySQL credentials
 MYSQL_ROOT_PASSWORD=$(openssl rand -hex 12)
 MYSQL_USER="wpuser_$(openssl rand -hex 4)"
 MYSQL_PASSWORD=$(openssl rand -hex 12)
 MYSQL_DATABASE="${STACK_NAME}_db"
 NETWORK_NAME="${STACK_NAME}_net"
 
-# Generate secure keys for wp-config.php
+# Generate WordPress secret keys
 generate_key() {
   openssl rand -base64 48
 }
@@ -37,7 +37,14 @@ else
   echo "Network $NETWORK_NAME already exists"
 fi
 
-# Generate wp-config.php dynamically
+# Create shared bind mount folders (local setup; Syncthing will sync between nodes)
+UPLOADS_DIR="/var/lib/docker/volumes/${STACK_NAME}_wp_data/_data"
+DB_DIR="/var/lib/docker/volumes/${STACK_NAME}_db_data/_data"
+
+mkdir -p "$UPLOADS_DIR" "$DB_DIR"
+chown -R 33:33 "$UPLOADS_DIR"  # www-data UID:GID for WordPress
+
+# Generate wp-config.php
 WP_CONFIG_GENERATED=$(mktemp)
 
 cat > "$WP_CONFIG_GENERATED" <<EOF
@@ -75,7 +82,7 @@ docker config rm "${STACK_NAME}_wp_config" 2>/dev/null || true
 docker config create "${STACK_NAME}_wp_config" "$WP_CONFIG_GENERATED"
 rm "$WP_CONFIG_GENERATED"
 
-# Create temporary docker-compose file
+# Create docker-compose temp file
 COMPOSE_FILE=$(mktemp)
 
 cat > "$COMPOSE_FILE" <<EOF
@@ -85,36 +92,58 @@ services:
   db:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: ...
+      MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
+      MYSQL_DATABASE: $MYSQL_DATABASE
+      MYSQL_USER: $MYSQL_USER
+      MYSQL_PASSWORD: $MYSQL_PASSWORD
     volumes:
       - /var/lib/docker/volumes/${STACK_NAME}_db_data/_data:/var/lib/mysql
     networks:
-      - ${STACK_NAME}_net
+      - $NETWORK_NAME
+    deploy:
+      placement:
+        constraints:
+          - node.role == worker
 
   wordpress:
     image: wordpress:latest
-    volumes:
-      - /var/lib/docker/volumes/${STACK_NAME}_wp_data/_data:/var/www/html/wp-content/uploads
+    depends_on:
+      - db
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: $MYSQL_USER
+      WORDPRESS_DB_PASSWORD: $MYSQL_PASSWORD
+      WORDPRESS_DB_NAME: $MYSQL_DATABASE
     configs:
       - source: ${STACK_NAME}_wp_config
         target: /var/www/html/wp-config.php
         mode: 0444
+    volumes:
+      - /var/lib/docker/volumes/${STACK_NAME}_wp_data/_data:/var/www/html/wp-content/uploads
+    ports:
+      - "8080:80"
     networks:
-      - ${STACK_NAME}_net
+      - $NETWORK_NAME
+    deploy:
+      placement:
+        constraints:
+          - node.role == worker
 
 configs:
   ${STACK_NAME}_wp_config:
     external: true
 
 networks:
-  ${STACK_NAME}_net:
+  $NETWORK_NAME:
     external: true
 EOF
 
 echo "Deploying stack '$STACK_NAME'..."
 docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME"
-
 rm "$COMPOSE_FILE"
 
-echo "WordPress stack '$STACK_NAME' deployed successfully!"
-echo "Access it at http://<your-swarm-node-ip>:8080"
+echo
+echo "✅ WordPress stack '$STACK_NAME' deployed successfully!"
+echo "🌐 Access it at: http://<your-node-ip>:8080"
+echo "🔄 Make sure Syncthing is syncing:"
+echo "  - $UPLOADS_DIR across all nodes"
