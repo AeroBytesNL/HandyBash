@@ -1,10 +1,12 @@
 #!/bin/bash
 set -e
 
-STACK_NAME=$1  # e.g. mywordpress
+STACK_NAME=$1
+WP_PORT=$2
 
-if [[ -z "$STACK_NAME" ]]; then
-  echo "Usage: $0 <stack_name>"
+if [[ -z "$STACK_NAME" || -z "$WP_PORT" ]]; then
+  echo "Usage: $0 <stack_name> <external_port>"
+  echo "Example: $0 WordPressClient 8719"
   exit 1
 fi
 
@@ -37,20 +39,18 @@ else
   echo "Network $NETWORK_NAME already exists"
 fi
 
-# Create shared bind mount folders (local setup; Syncthing will sync between nodes)
+# Create bind mount folders
 UPLOADS_DIR="/var/lib/docker/volumes/${STACK_NAME}_wp_data/_data"
 DB_DIR="/var/lib/docker/volumes/${STACK_NAME}_db_data/_data"
 
 mkdir -p "$UPLOADS_DIR" "$DB_DIR"
-chown -R 33:33 "$UPLOADS_DIR"  # www-data UID:GID for WordPress
+chown -R 33:33 "$UPLOADS_DIR"  # www-data UID:GID
 
 # Generate wp-config.php
 WP_CONFIG_GENERATED=$(mktemp)
 
 cat > "$WP_CONFIG_GENERATED" <<EOF
 <?php
-// Auto-generated wp-config.php
-
 define('DB_NAME', '${MYSQL_DATABASE}');
 define('DB_USER', '${MYSQL_USER}');
 define('DB_PASSWORD', '${MYSQL_PASSWORD}');
@@ -58,7 +58,6 @@ define('DB_HOST', 'db:3306');
 define('DB_CHARSET', 'utf8');
 define('DB_COLLATE', '');
 
-// Authentication Unique Keys and Salts.
 define('AUTH_KEY',         '${AUTH_KEY}');
 define('SECURE_AUTH_KEY',  '${SECURE_AUTH_KEY}');
 define('LOGGED_IN_KEY',    '${LOGGED_IN_KEY}');
@@ -73,16 +72,14 @@ define('NONCE_SALT',       '${NONCE_SALT}');
 if (!defined('ABSPATH')) {
     define('ABSPATH', __DIR__ . '/');
 }
-
 require_once ABSPATH . 'wp-settings.php';
 EOF
 
-echo "Creating Docker config for wp-config.php..."
 docker config rm "${STACK_NAME}_wp_config" 2>/dev/null || true
 docker config create "${STACK_NAME}_wp_config" "$WP_CONFIG_GENERATED"
 rm "$WP_CONFIG_GENERATED"
 
-# Create docker-compose temp file
+# Temporary Docker Compose file
 COMPOSE_FILE=$(mktemp)
 
 cat > "$COMPOSE_FILE" <<EOF
@@ -121,7 +118,7 @@ services:
     volumes:
       - /var/lib/docker/volumes/${STACK_NAME}_wp_data/_data:/var/www/html/wp-content/uploads
     ports:
-      - "8080:80"
+      - "${WP_PORT}:80"
     networks:
       - $NETWORK_NAME
     deploy:
@@ -138,12 +135,13 @@ networks:
     external: true
 EOF
 
-echo "Deploying stack '$STACK_NAME'..."
+echo "Deploying stack '$STACK_NAME' on port $WP_PORT..."
 docker stack deploy -c "$COMPOSE_FILE" "$STACK_NAME"
 rm "$COMPOSE_FILE"
 
 echo
-echo "✅ WordPress stack '$STACK_NAME' deployed successfully!"
-echo "🌐 Access it at: http://<your-node-ip>:8080"
-echo "🔄 Make sure Syncthing is syncing:"
-echo "  - $UPLOADS_DIR across all nodes"
+echo "✅ WordPress stack '$STACK_NAME' deployed!"
+echo "🌍 Visit: http://<your-node-ip>:${WP_PORT}"
+echo "📂 Syncthing should sync:"
+echo "    - $UPLOADS_DIR"
+echo "    - $DB_DIR"
