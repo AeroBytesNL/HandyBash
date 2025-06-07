@@ -74,8 +74,8 @@ if [ -z "$IP_ADDR" ]; then
     exit 1
 fi
 
-
 echo "[INFO] Preparing system..."
+sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 871920D1991BC93C
 sudo apt-get update
 sudo apt-get install -y curl gnupg lsb-release apt-transport-https ca-certificates linux-headers-"$(uname -r)"
 
